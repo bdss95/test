@@ -1,0 +1,96 @@
+//DO NOT MODIFY  Update  LN.DARCOVR|ZCHDOVR|||||||1
+	/*
+	 ORIG: 1 - 01/01/2020
+	 DESC: 
+	
+	 ---- Comments --------------------------------------------------------
+	
+	 ---- Revision History ------------------------------------------------
+	
+	 ****** Consider using setAuditFlag for all objects in this procedure
+	   example :do dep.setAuditFlag(1)
+	
+	*/
+	
+	do SYSVAR^SCADRV0()
+	set ZDATE=$$DAT^%ZM(%SystemDate,"YEARMMDD")
+	set ZTIME=$$TIM^%ZM(%CurrentTime,"2460SS")
+	set ZPATH=$$TRNLNM^%ZFUNC("SCAU_SPOOL_EXTF")
+	set %TLO="BATCH"
+	set ZTJD=%SystemDate
+	if ZTJD '= $$NJD^UFRE(ZTJD-1,"1MA1") quit
+	do READZTMCOVID
+		
+READZTMCOVID
+
+	type String REMARK=""
+	type String ZCID=""
+	type String DARCLSOLD=""
+	type String DARCOVR=""
+
+	type IO iow = Class.new("IO") //Write File
+	//Create Write file
+	set WFNAME="ZCHDOVR"_ZDATE_ZTIME_".log"
+	set iow.directory=ZPATH
+	set iow.fileName= WFNAME //Log File
+	set iow.openParams="NEWV/WRITE"
+	do iow.open()
+	do iow.write("CID|OLD DARCLS|NEW DARCLS")
+	
+	//catch error {
+	//	write error,!
+	//	set REMARK="Not Updated"
+	//	do iow.write(ZCID_" | "_DARCLSOLD_" | "_DARCOVR_" | "_REMARK)
+	//}
+	
+	type ResultSet rs=Db.select("CID","ZTMPLNCOV")
+	
+	if 'rs.isEmpty() while rs.next() do {
+		set ZCID=rs.getCol(1)
+		if ('Db.isDefined("ZTMPACCOVR","CID=:ZCID")) do {
+			type RecordLN ln=Db.getRecord("LN","CID=:ZCID")
+			if 'ln.DARCLS.isNull() do {
+				if (ln.DARCLS<ln.DARCOVR) do {
+					do ln.setAuditFlag(1)
+					set DARCLSOLD = ln.DARCOVR
+					set ln.DARCOVR=ln.DARCLS
+					set DARCOVR = ln.DARCOVR
+					do ln.save()
+					do iow.write(ZCID_"|"_DARCLSOLD_"|"_DARCOVR)
+				}
+		
+			}
+		}
+		
+	}
+	
+	type ResultSet rs2=Db.select("CID","ZTMPDEPCOV")
+	if 'rs2.isEmpty() while rs2.next() do {
+		set ZCID=rs2.getCol(1)
+		if ('Db.isDefined("ZTMPACCOVR","CID=:ZCID")) do {
+			type RecordDEP dep=Db.getRecord("DEP","CID=:ZCID")
+			if 'dep.DARCLS.isNull() do {
+				if (dep.DARCLS<dep.DARCOVR) do {
+					do dep.setAuditFlag(1)
+					set DARCLSOLD = dep.DARCOVR
+					set dep.DARCOVR=dep.DARCLS
+					set DARCOVR = dep.DARCOVR
+					do dep.save()
+					do iow.write(ZCID_"|"_DARCLSOLD_"|"_DARCOVR)
+				}
+			}
+			else do {
+				do dep.setAuditFlag(1)
+				set DARCLSOLD = "null"
+				set dep.DARCOVR=1
+				set DARCOVR = dep.DARCOVR
+				do dep.save()
+				do iow.write(ZCID_"|"_DARCLSOLD_"|"_DARCOVR)
+			}
+		}
+		
+	}
+	
+	do iow.close()
+	write "OUTPUT FILE NAME: "_WFNAME
+	quit	
